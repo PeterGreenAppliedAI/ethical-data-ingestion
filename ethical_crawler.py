@@ -1107,10 +1107,27 @@ def search(query, source, data_type, limit, db):
                 console.print(f"[dim]Tags: {tags_display}[/dim]")
             
             console.print()
+        sources_in_results = set(record.source_name for record in results)
+
+        if sources_in_results:
+            console.print("[bold]📋 Data Attribution:[/bold]")
+
+            if "UN Comtrade" in sources_in_results:
+                console.print("[blue]📢 UN Comtrade: Data licensed under CC BY 4.0 | https://comtradeapi.un.org/[/blue]")
+            
+            if "NYC Open Data" in sources_in_results:
+                console.print("[blue]📢 NYC Open Data: Public Domain | https://opendata.cityofnewyork.us/[/blue]")
+            
+            if "SEC EDGAR" in sources_in_results:
+                console.print("[blue]📢 SEC EDGAR: Public Domain | https://www.sec.gov/[/blue]")
+            
+            if "College Scorecard" in sources_in_results:
+                console.print("[blue]📢 College Scorecard: Public Domain | https://collegescorecard.ed.gov/[/blue]")
         
         manager.close()
     
     asyncio.run(run_search())
+       
 
 
 @cli.command()
@@ -1168,6 +1185,23 @@ def analytics(db):
         # Summary
         console.print(f"\n[green]📊 Total: {stats['total_records']:,} records from {stats['total_sources']} sources[/green]")
         console.print(f"[blue]💾 Database: {db} (DuckDB format)[/blue]")
+        
+        if stats['source_stats']:
+            console.print("\n[bold]📋 Data Source Attribution:[/bold]")
+            
+            source_names = [source['source_name'] for source in stats['source_stats']]
+            
+            if "UN Comtrade" in source_names:
+                console.print("[blue]📢 UN Comtrade: Data licensed under CC BY 4.0 | https://comtradeapi.un.org/[/blue]")
+            
+            if "NYC Open Data" in source_names:
+                console.print("[blue]📢 NYC Open Data: Public Domain | https://opendata.cityofnewyork.us/[/blue]")
+            
+            if "SEC EDGAR" in source_names:
+                console.print("[blue]📢 SEC EDGAR: Public Domain | https://www.sec.gov/[/blue]")
+            
+            if "College Scorecard" in source_names:
+                console.print("[blue]📢 College Scorecard: Public Domain | https://collegescorecard.ed.gov/[/blue]")
         
         manager.close()
     
@@ -1306,6 +1340,23 @@ def status(db):
         if db_path.exists():
             db_size = db_path.stat().st_size
             console.print(f"[blue]📊 Database size: {db_size:,} bytes[/blue]")
+        
+        if not source_stats.empty:
+            console.print("\n[bold]📋 Data Source Licenses & Attribution:[/bold]")
+            
+            source_names = source_stats['source_name'].tolist()
+            
+            if "UN Comtrade" in source_names:
+                console.print("[blue]📢 UN Comtrade: Data licensed under CC BY 4.0 | https://comtradeapi.un.org/[/blue]")
+            
+            if "NYC Open Data" in source_names:
+                console.print("[blue]📢 NYC Open Data: Public Domain | https://opendata.cityofnewyork.us/[/blue]")
+            
+            if "SEC EDGAR" in source_names:
+                console.print("[blue]📢 SEC EDGAR: Public Domain | https://www.sec.gov/[/blue]")
+            
+            if "College Scorecard" in source_names:
+                console.print("[blue]📢 College Scorecard: Public Domain | https://collegescorecard.ed.gov/[/blue]")
         
         manager.close()
     
