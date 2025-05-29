@@ -1236,6 +1236,31 @@ def export(format, output, where, db):
                 console.print(f"[green]✅ Export complete![/green]")
                 console.print(f"[blue]📁 File: {output_file}[/blue]")
                 console.print(f"[blue]📊 Size: {file_size:,} bytes[/blue]")
+                
+                # 🎯 ADD THIS ATTRIBUTION BLOCK HERE:
+                # Check what sources are in the exported data
+                sources_query = "SELECT DISTINCT source_name FROM data_records"
+                if where:
+                    sources_query += f" WHERE {where}"
+                
+                sources_df = await manager.db_manager.fetch_df_async(sources_query)
+                source_names = sources_df['source_name'].tolist()
+                
+                if source_names:
+                    console.print("\n[bold]📋 Exported Data Attribution:[/bold]")
+                    
+                    if "UN Comtrade" in source_names:
+                        console.print("[blue]📢 UN Comtrade: Data licensed under CC BY 4.0 | https://comtradeapi.un.org/[/blue]")
+                    
+                    if "NYC Open Data" in source_names:
+                        console.print("[blue]📢 NYC Open Data: Public Domain | https://opendata.cityofnewyork.us/[/blue]")
+                    
+                    if "SEC EDGAR" in source_names:
+                        console.print("[blue]📢 SEC EDGAR: Public Domain | https://www.sec.gov/[/blue]")
+                    
+                    if "College Scorecard" in source_names:
+                        console.print("[blue]📢 College Scorecard: Public Domain | https://collegescorecard.ed.gov/[/blue]")
+                
             else:
                 console.print(f"[red]❌ Export failed - file not found[/red]")
                 
