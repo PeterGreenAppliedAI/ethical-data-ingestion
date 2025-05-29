@@ -355,6 +355,15 @@ For issues, questions, or new data source suggestions:
 - Verify setup: `python3 ethical_crawler.py setup --help`
 
 ---
+## 📜 Legal Notice
+
+This project is designed for **ethical data collection** from public, officially supported sources.
+
+- All ingestion respects `robots.txt`, public API rate limits, and usage terms.
+- No unauthorized scraping or data harvesting is performed.
+- Users must adhere to the terms of service of each source when using or modifying this system.
+
+Use of this tool is at your own discretion. The creator is not liable for misuse.
 
 
 
