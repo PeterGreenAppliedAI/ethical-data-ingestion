@@ -935,30 +935,162 @@ class EthicalDataManager:
                 record.license_info
             ])
     
-        # Insert each record individually (simple and works)
-        for record in records:  # ← Use 'record' not 'data_row'
-            await self.db_manager.execute_async("""
-                INSERT OR IGNORE INTO data_records 
-                (source_name, record_id, title, description, data_type, url, metadata, 
-                content_summary, tags, last_updated, ingested_at, file_format, 
-                size_bytes, license_info)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                record.source_name,  # ← Access record properties directly
-                record.record_id,
-                record.title,
-                record.description,        
-                record.data_type,         
-                record.url,               
-                json.dumps(record.metadata) if record.metadata else None,  
-                record.content_summary,   
-                record.tags,              
-                record.last_updated,      
-                record.ingested_at,       
-                record.file_format,       
-                record.size_bytes,        
-                record.license_info       
-            ])
+    async def collect_all_data(self) -> Dict[str, List[DataRecord]]:
+        """Collect data from all compliant sources using batch operations."""
+        all_data = {}
+        
+        for name, adapter in self.adapters.items():
+            # Check if source is compliant
+            if name in self.compliance_checks:
+                check = self.compliance_checks[name]
+                if check.issues:
+                    console.print(f"[yellow]⚠️  Skipping {name} due to compliance issues[/yellow]")
+                    continue
+            
+            try:
+                console.print(f"[blue]📡 Collecting data from {name}...[/blue]")
+                async with adapter:
+                    records = await adapter.discover_datasets()
+                    all_data[name] = records
+                    
+                    # Store records in batch
+                    if records:
+                        await self._store_data_records_batch(records)
+                    
+                    console.print(f"[green]✅ Collected {len(records)} records from {name}[/green]")
+                    
+            except Exception as e:
+                logger.error(f"Error collecting data from {name}: {e}")
+                all_data[name] = []
+        
+        return all_data
+
+    async def search_records(self, 
+                           query: str, 
+                           source_filter: Optional[str] = None,
+                           data_type_filter: Optional[str] = None,
+                           limit: int = 50) -> List[DataRecord]:
+        """Search collected data records using DuckDB's analytical capabilities."""
+        
+        where_conditions = []
+        parameters = []
+        
+        if query:
+            where_conditions.append("""
+                (title ILIKE ? OR 
+                 description ILIKE ? OR 
+                 content_summary ILIKE ?)
+            """)
+            search_pattern = f"%{query}%"
+            parameters.extend([search_pattern] * 3)
+        
+        if source_filter:
+            where_conditions.append("source_name = ?")
+            parameters.append(source_filter)
+        
+        if data_type_filter:
+            where_conditions.append("data_type = ?")
+            parameters.append(data_type_filter)
+        
+        where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+        
+        sql_query = f"""
+            SELECT * FROM data_records
+            {where_clause}
+            ORDER BY ingested_at DESC
+            LIMIT ?
+        """
+        
+        all_parameters = parameters + [limit]
+        df = await self.db_manager.fetch_df_async(sql_query, all_parameters)
+        
+        # Convert DataFrame to DataRecord objects
+        records = []
+        for _, row in df.iterrows():
+            record = DataRecord(
+                source_name=row['source_name'],
+                record_id=row['record_id'],
+                title=row['title'],
+                description=row['description'],
+                data_type=row['data_type'],
+                url=row['url'],
+                metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                content_summary=row['content_summary'],
+                tags=list(row['tags']) if row['tags'] else [],
+                last_updated=pd.to_datetime(row['last_updated']) if pd.notna(row['last_updated']) else None,
+                ingested_at=pd.to_datetime(row['ingested_at']),
+                file_format=row['file_format'],
+                size_bytes=int(row['size_bytes']) if pd.notna(row['size_bytes']) else None,
+                license_info=row['license_info']
+            )
+            records.append(record)
+        
+        return records
+
+    async def get_analytics_summary(self) -> Dict[str, Any]:
+        """Get comprehensive analytics using DuckDB's analytical functions."""
+        
+        # Records by source with statistics
+        source_stats_df = await self.db_manager.fetch_df_async("""
+            SELECT 
+                source_name,
+                COUNT(*) as record_count,
+                COUNT(DISTINCT data_type) as unique_data_types,
+                MIN(ingested_at) as first_ingested,
+                MAX(ingested_at) as last_ingested
+            FROM data_records
+            GROUP BY source_name
+            ORDER BY record_count DESC
+        """)
+        
+        # Data types distribution
+        data_types_df = await self.db_manager.fetch_df_async("""
+            SELECT 
+                data_type,
+                COUNT(*) as count
+            FROM data_records
+            GROUP BY data_type
+            ORDER BY count DESC
+        """)
+        
+        return {
+            'source_stats': source_stats_df.to_dict('records'),
+            'data_types': data_types_df.to_dict('records'),
+            'total_records': int(source_stats_df['record_count'].sum()) if not source_stats_df.empty else 0,
+            'total_sources': len(source_stats_df)
+        }
+
+    async def export_to_formats(self, 
+                              query: Optional[str] = None,
+                              output_format: str = 'parquet',
+                              output_path: str = 'exported_data') -> str:
+        """Export data to various formats using DuckDB's built-in exporters."""
+        
+        base_query = "SELECT * FROM data_records"
+        if query:
+            base_query += f" WHERE {query}"
+        
+        if output_format.lower() == 'parquet':
+            output_file = f"{output_path}.parquet"
+            await self.db_manager.execute_async(
+                f"COPY ({base_query}) TO '{output_file}' (FORMAT PARQUET)"
+            )
+        elif output_format.lower() == 'csv':
+            output_file = f"{output_path}.csv"
+            await self.db_manager.execute_async(
+                f"COPY ({base_query}) TO '{output_file}' (FORMAT CSV, HEADER)"
+            )
+        elif output_format.lower() == 'json':
+            output_file = f"{output_path}.json"
+            await self.db_manager.execute_async(
+                f"COPY ({base_query}) TO '{output_file}' (FORMAT JSON)"
+            )
+        else:
+            raise ValueError(f"Unsupported format: {output_format}")
+        
+        return output_file
+
+    
 
     def close(self):
         """Close database connections."""
