@@ -274,7 +274,7 @@ class BaseAdapter(ABC):
         self.api_key = api_key
         self.session: Optional[aiohttp.ClientSession] = None
         self.robots_checker = RobotsChecker()
-        self.last_request_time = datetime.now()
+        self.last_request_time = datetime.min()
         
     async def __aenter__(self):
         self.session = aiohttp.ClientSession(
