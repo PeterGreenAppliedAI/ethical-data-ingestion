@@ -367,7 +367,7 @@ class NYCOpenDataAdapter(BaseAdapter):
         try:
             url = f"{self.source.api_endpoint}/metadata/v1"
             params = {
-                'limit': 1000,
+                'limit': 5000,
                 'offset': 0
             }
             if self.api_key:
@@ -1007,6 +1007,11 @@ class EthicalDataManager:
         # Convert DataFrame to DataRecord objects
         records = []
         for _, row in df.iterrows():
+            # Safe tag handling
+            try:
+                tags = list(row['tags']) if pd.notna(row['tags']) else []
+            except (TypeError, ValueError, AttributeError):
+                tags = []
             record = DataRecord(
                 source_name=row['source_name'],
                 record_id=row['record_id'],
@@ -1016,7 +1021,7 @@ class EthicalDataManager:
                 url=row['url'],
                 metadata=json.loads(row['metadata']) if row['metadata'] else {},
                 content_summary=row['content_summary'],
-                tags=list(row['tags']) if row['tags'] else [],
+                tags=tags,
                 last_updated=pd.to_datetime(row['last_updated']) if pd.notna(row['last_updated']) else None,
                 ingested_at=pd.to_datetime(row['ingested_at']),
                 file_format=row['file_format'],
@@ -1036,6 +1041,7 @@ class EthicalDataManager:
                 source_name,
                 COUNT(*) as record_count,
                 COUNT(DISTINCT data_type) as unique_data_types,
+                AVG(size_bytes) as avg_size_bytes,
                 MIN(ingested_at) as first_ingested,
                 MAX(ingested_at) as last_ingested
             FROM data_records
@@ -1056,6 +1062,9 @@ class EthicalDataManager:
         return {
             'source_stats': source_stats_df.to_dict('records'),
             'data_types': data_types_df.to_dict('records'),
+            'popular_tags': [],  # Add empty list for now
+            'temporal_activity': [],  # Add empty list for now
+            'license_distribution': [],  # Add empty list for now
             'total_records': int(source_stats_df['record_count'].sum()) if not source_stats_df.empty else 0,
             'total_sources': len(source_stats_df)
         }
@@ -1283,7 +1292,7 @@ def analytics(db):
         source_table.add_column("First Ingested", style="blue")
         
         for source in stats['source_stats']:
-            avg_size = f"{int(source['avg_size_bytes']):,}" if source['avg_size_bytes'] else "N/A"
+            avg_size = f"{int(source['avg_size_bytes']):,}" if pd.notna(source['avg_size_bytes']) else "N/A"
             first_date = pd.to_datetime(source['first_ingested']).strftime('%Y-%m-%d') if source['first_ingested'] else "N/A"
             
             source_table.add_row(
@@ -1300,8 +1309,8 @@ def analytics(db):
         if stats['data_types']:
             console.print("\n[bold]📋 Data Types Distribution:[/bold]")
             for dt in stats['data_types'][:5]:
-                console.print(f"  {dt['data_type']}: {dt['count']:,} ({dt['percentage']}%)")
-        
+                console.print(f"  {dt['data_type']}: {dt['count']:,}")
+
         # Popular tags
         if stats['popular_tags']:
             console.print("\n[bold]🏷️  Most Popular Tags:[/bold]")
